@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -45,9 +46,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.wear.compose.material3.AppScaffold
 import androidx.wear.compose.material3.Button
+import androidx.wear.compose.material3.CompactButton
+import androidx.wear.compose.material3.IconButton
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
 import androidx.wear.compose.ui.tooling.preview.WearPreviewDevices
@@ -259,20 +264,22 @@ private fun WorkoutFaces(
         ) { page ->
             val faceTitle = when (page) {
                 0 -> "TODAY'S PLAN"
-                1 -> "SET COUNTER"
+                1 -> "WORKOUT"
                 else -> "SESSION"
             }
 
             Column(
-                modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 5.dp),
+                modifier = Modifier.fillMaxSize().padding(horizontal = 4.dp, vertical = 5.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text(
-                    text = faceTitle,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                    Spacer(Modifier.height(4.dp))
+                if (page != 1) {
+                    Text(
+                        text = faceTitle,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Spacer(Modifier.height(3.dp))
+                }
 
                 when (page) {
                     0 -> DayRoutineFace(workout, completedSets) { index ->
@@ -286,22 +293,27 @@ private fun WorkoutFaces(
                         selectedIndex = selectedExercise.intValue,
                         selectedSet = selectedSet.intValue,
                         restRemaining = restRemaining,
-                        onSelectExercise = { selectedExercise.intValue = it },
                         onSelectSet = { selectedSet.intValue = it },
-                        onCompleteSet = { exerciseIndex, setIndex ->
+                        onToggleSet = { exerciseIndex, setIndex ->
                             val exerciseSets = completedSets[exerciseIndex]
-                            if (setIndex in exerciseSets.indices && !exerciseSets[setIndex]) {
-                                exerciseSets[setIndex] = true
+                            if (setIndex in exerciseSets.indices) {
+                                val wasDone = exerciseSets[setIndex]
+                                exerciseSets[setIndex] = !wasDone
+                                if (wasDone) {
+                                    restDeadline = null
+                                    restRemaining = 0
+                                } else {
                                     val nextSet = exerciseSets.indices.firstOrNull { !exerciseSets[it] }
-                                if (nextSet != null) {
-                                    selectedSet.intValue = nextSet
-                                    val exercise = workout.exercises[exerciseIndex]
-                                    val restSeconds = (exercise.restSeconds?.takeIf { it > 0 }
-                                        ?: workout.defaultRestSeconds).coerceAtLeast(0)
-                                    restDeadline = if (restSeconds > 0) {
-                                        System.currentTimeMillis() + restSeconds * 1000L
-                                    } else null
-                                    restRemaining = restSeconds
+                                    if (nextSet != null) {
+                                        selectedSet.intValue = nextSet
+                                        val exercise = workout.exercises[exerciseIndex]
+                                        val restSeconds = (exercise.restSeconds?.takeIf { it > 0 }
+                                            ?: workout.defaultRestSeconds).coerceAtLeast(0)
+                                        restDeadline = if (restSeconds > 0) {
+                                            System.currentTimeMillis() + restSeconds * 1000L
+                                        } else null
+                                        restRemaining = restSeconds
+                                    }
                                 }
                             }
                         },
@@ -311,6 +323,10 @@ private fun WorkoutFaces(
                         onNextSet = {
                             val sets = completedSets[selectedExercise.intValue]
                             selectedSet.intValue = (selectedSet.intValue + 1).coerceAtMost((sets.size - 1).coerceAtLeast(0))
+                        },
+                        onSelectExercise = { index ->
+                            selectedExercise.intValue = index
+                            selectedSet.intValue = completedSets[index].indexOfFirst { !it }.coerceAtLeast(0)
                             restDeadline = null
                             restRemaining = 0
                         },
@@ -508,7 +524,7 @@ private fun ColumnScope.DayRoutineFace(
             workout.exercises.forEachIndexed { index, exercise ->
                 Button(
                     onClick = { onExerciseClick(index) },
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 2.dp),
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(exercise.name, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
@@ -532,7 +548,7 @@ private fun ColumnScope.SetCounterFace(
     restRemaining: Int,
     onSelectExercise: (Int) -> Unit,
     onSelectSet: (Int) -> Unit,
-    onCompleteSet: (Int, Int) -> Unit,
+    onToggleSet: (Int, Int) -> Unit,
     onPreviousSet: () -> Unit,
     onNextSet: () -> Unit,
 ) {
@@ -548,52 +564,86 @@ private fun ColumnScope.SetCounterFace(
     val setIndex = selectedSet.coerceIn(exerciseSets.indices)
     val isCurrentSetDone = exerciseSets[setIndex]
     val done = exerciseSets.count { it }
+    val arrowSize = 32.dp
+
     Column(
         modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier
+                .fillMaxWidth(0.85f)          // chord-safe, not full square
+                .align(Alignment.CenterHorizontally),
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Button(onClick = {
-                val nextExercise = (selectedIndex - 1 + workout.exercises.size) % workout.exercises.size
-                onSelectExercise(nextExercise)
-                onSelectSet(completedSets[nextExercise].indexOfFirst { !it }.coerceAtLeast(0))
-            }) {
-                Text("Exercise ‹")
+            Box(
+                modifier = Modifier
+                    .size(arrowSize)
+                    .clip(CircleShape)
+                    .clickable {
+                        val next =
+                            (selectedIndex - 1 + workout.exercises.size) % workout.exercises.size
+                        onSelectExercise(next)
+                        onSelectSet(completedSets[next].indexOfFirst { !it }.coerceAtLeast(0))
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("«", fontSize = 18.sp, maxLines = 1, softWrap = false)
             }
-            Text(
-                "${selectedIndex + 1} / ${workout.exercises.size}",
-                style = MaterialTheme.typography.labelSmall,
-            )
-            Button(onClick = {
-                val nextExercise = (selectedIndex + 1) % workout.exercises.size
-                onSelectExercise(nextExercise)
-                onSelectSet(completedSets[nextExercise].indexOfFirst { !it }.coerceAtLeast(0))
-            }) {
-                Text("Exercise ›")
+
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    "WORKOUT",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    "${selectedIndex + 1} / ${workout.exercises.size}",
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .size(arrowSize)
+                    .clip(CircleShape)
+                    .clickable {
+                        val next = (selectedIndex + 1) % workout.exercises.size
+                        onSelectExercise(next)
+                        onSelectSet(completedSets[next].indexOfFirst { !it }.coerceAtLeast(0))
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("»", fontSize = 18.sp, maxLines = 1, softWrap = false)
             }
         }
+
         Text(
             exercise.name,
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.titleSmall,
             textAlign = TextAlign.Center,
             fontWeight = FontWeight.Bold,
         )
         Text(
-            exercise.target ?: "",
+            exercise.targetedSystems.distinct().joinToString(" · ").ifBlank { exercise.target ?: "General" },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
         Spacer(Modifier.height(4.dp))
         Text("$done / ${exercise.sets}", fontSize = 28.sp, fontWeight = FontWeight.Bold)
-        Text("SETS", style = MaterialTheme.typography.labelSmall)
-        Spacer(Modifier.height(2.dp))
-        Text("Set ${setIndex + 1} of ${exercise.sets}", style = MaterialTheme.typography.labelSmall)
+        Text("SETS", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
         if (restRemaining > 0) {
             Text(
                 "Rest ${restRemaining / 60}:${(restRemaining % 60).toString().padStart(2, '0')}",
@@ -614,10 +664,12 @@ private fun ColumnScope.SetCounterFace(
                 Text("←")
             }
             Button(
-                onClick = { onCompleteSet(selectedIndex, setIndex) },
-                enabled = !isCurrentSetDone,
+                onClick = { onToggleSet(selectedIndex, setIndex) },
             ) {
-                Text("✓")
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(if (isCurrentSetDone) "✓" else "✓")
+                    Text(if (isCurrentSetDone) "Undo" else "Done", style = MaterialTheme.typography.labelSmall)
+                }
             }
             Button(
                 onClick = onNextSet,
@@ -712,9 +764,9 @@ private fun sampleWorkout() = WatchWorkout(
     id = "today",
     name = "Strength day",
     exercises = listOf(
-        WatchExercise("squat", "Goblet squat", "Dumbbell", "8-10 reps", 3, null, null),
-        WatchExercise("press", "Chest press", "Dumbbell", "8-12 reps", 3, null, null),
-        WatchExercise("row", "Bent-over row", "Dumbbell", "10-12 reps", 3, null, null),
+        WatchExercise("squat", "Goblet squat", "Dumbbell", "8-10 reps", 3, null, null, targetedSystems = listOf("quadriceps", "glutes")),
+        WatchExercise("press", "Chest press", "Dumbbell", "8-12 reps", 3, null, null, targetedSystems = listOf("chest", "triceps")),
+        WatchExercise("row", "Bent-over row", "Dumbbell", "10-12 reps", 3, null, null, targetedSystems = listOf("upper back", "biceps")),
         WatchExercise("plank", "Plank", null, "30 sec", 3, 30, null),
     ),
     date = LocalDate.now().toString(),

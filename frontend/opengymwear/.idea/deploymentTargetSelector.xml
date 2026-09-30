@@ -4,7 +4,7 @@
     <selectionStates>
       <SelectionState runConfigName="app">
         <option name="selectionMode" value="DROPDOWN" />
-        <DropdownSelection timestamp="2026-09-29T19:51:04.337272001Z">
+        <DropdownSelection timestamp="2026-09-30T01:05:28.110535054Z">
           <Target type="DEFAULT_BOOT">
             <handle>
               <DeviceId pluginId="LocalEmulator" identifier="path=/home/w3ndo/.android/avd/watchy2.avd" />
